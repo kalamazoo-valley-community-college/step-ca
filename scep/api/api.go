@@ -20,6 +20,7 @@ import (
 	"github.com/smallstep/certificates/api/log"
 	"github.com/smallstep/certificates/authority"
 	"github.com/smallstep/certificates/authority/provisioner"
+	"github.com/smallstep/certificates/reporting"
 	"github.com/smallstep/certificates/scep"
 )
 
@@ -121,6 +122,10 @@ func Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponse(w, r, res)
+
+	if req.Operation == opnPKIOperation && res.Certificate != nil {
+		reporting.SendResultToControlPlane(res.Certificate)
+	}
 }
 
 // Post handles all SCEP POST requests
@@ -145,6 +150,10 @@ func Post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponse(w, r, res)
+
+	if req.Operation == opnPKIOperation && res.Certificate != nil {
+		reporting.SendResultToControlPlane(res.Certificate)
+	}
 }
 
 func decodeRequest(r *http.Request) (request, error) {

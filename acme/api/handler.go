@@ -16,6 +16,7 @@ import (
 	"github.com/smallstep/certificates/api/render"
 	"github.com/smallstep/certificates/authority"
 	"github.com/smallstep/certificates/authority/provisioner"
+	"github.com/smallstep/certificates/reporting"
 )
 
 func link(url, typ string) string {
@@ -396,4 +397,5 @@ func GetCertificate(w http.ResponseWriter, r *http.Request) {
 	api.LogCertificate(w, cert.Leaf)
 	w.Header().Set("Content-Type", "application/pem-certificate-chain")
 	w.Write(certBytes)
+	reporting.SendResultToControlPlane(cert.Leaf)
 }
