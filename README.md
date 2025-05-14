@@ -6,6 +6,13 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CLA assistant](https://cla-assistant.io/readme/badge/smallstep/certificates)](https://cla-assistant.io/smallstep/certificates)
 
+
+## An in-house fork for KVCC
+
+**This branch has been tooled such that the ACME and SCEP provisioners report to our certificate management system.
+Previously, our ACME client handled this exclusively, but it was moved here in order to support Mikrotik SCEP clients.  We have 0 ability to affect the SCEP client used by ROS, thus this fork.  In order to prevent double-reporting, our ACME client, lego, has also been modified to report ONLY if an external authority is used.**
+
+
 `step-ca` is an online certificate authority for secure, automated certificate management for DevOps.
 It's the server counterpart to the [`step` CLI tool](https://github.com/smallstep/cli) for working with certificates and keys.
 Both projects are maintained by [Smallstep Labs](https://smallstep.com).
