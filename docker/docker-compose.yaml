@@ -1,0 +1,13 @@
+services:
+  step-ca:
+    image: 'smalltest:latest'
+    container_name: 'step-ca'
+    hostname: 'smallstep'
+    ports:
+      - 9000:9000
+    environment:
+      - STEPPATH="/etc/step-ca"
+      - CONFIGPATH="/etc/step-ca/config/ca.json"
+#    command: "sleep infinity"
+    volumes:
+      - './tempdir:/etc/step-ca'

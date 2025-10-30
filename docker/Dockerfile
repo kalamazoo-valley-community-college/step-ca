@@ -9,12 +9,15 @@ RUN setcap CAP_NET_BIND_SERVICE=+eip bin/step-ca
 
 FROM smallstep/step-kms-plugin:cloud AS kms
 
-FROM smallstep/step-cli:latest
+FROM smallstep/step-cli:latest as cli
+
+FROM python:bookworm
 
 COPY --from=builder /src/bin/step-ca /usr/local/bin/step-ca
 COPY --from=kms /usr/local/bin/step-kms-plugin /usr/local/bin/step-kms-plugin
+COPY --from=cli "/usr/local/bin/step" "/usr/local/bin/step"
 
-USER step
+#USER step
 
 ENV CONFIGPATH="/home/step/config/ca.json"
 ENV PWDPATH="/home/step/secrets/password"
