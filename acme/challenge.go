@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,12 +30,12 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/google/go-tpm/legacy/tpm2"
+
 	"github.com/smallstep/go-attestation/attest"
 	"go.step.sm/crypto/jose"
 	"go.step.sm/crypto/keyutil"
 	"go.step.sm/crypto/pemutil"
 	"go.step.sm/crypto/x509util"
-	"golang.org/x/exp/slices"
 
 	"github.com/smallstep/certificates/acme/wire"
 	"github.com/smallstep/certificates/authority/provisioner"
@@ -1389,9 +1390,37 @@ Fqyi4+JE014cSgR57Jcu3dZiehB6UtAPgad9L5cNvua/IWRmm+ANy3O2LH++Pyl8
 SREzU8onbBsjMg9QDiSf5oJLKvd/Ren+zGY7
 -----END CERTIFICATE-----`
 
-// Serial number of the YubiKey, encoded as an integer.
-// https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
-var oidYubicoSerialNumber = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 41482, 3, 7}
+// Yubico Attestation Root 1 (YubiKey 5.7.4+)
+// https://developers.yubico.com/PKI/yubico-ca-1.pem
+const yubicoAttestationRootCA = `-----BEGIN CERTIFICATE-----
+MIIDPjCCAiagAwIBAgIUXzeiEDJEOTt14F5n0o6Zf/bBwiUwDQYJKoZIhvcNAQEN
+BQAwJDEiMCAGA1UEAwwZWXViaWNvIEF0dGVzdGF0aW9uIFJvb3QgMTAgFw0yNDEy
+MDEwMDAwMDBaGA85OTk5MTIzMTIzNTk1OVowJDEiMCAGA1UEAwwZWXViaWNvIEF0
+dGVzdGF0aW9uIFJvb3QgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+AMZ6/TxM8rIT+EaoPvG81ontMOo/2mQ2RBwJHS0QZcxVaNXvl12LUhBZ5LmiBScI
+Zd1Rnx1od585h+/dhK7hEm7JAALkKKts1fO53KGNLZujz5h3wGncr4hyKF0G74b/
+U3K9hE5mGND6zqYchCRAHfrYMYRDF4YL0X4D5nGdxvppAy6nkEmtWmMnwO3i0TAu
+csrbE485HvGM4r0VpgVdJpvgQjiTJCTIq+D35hwtT8QDIv+nGvpcyi5wcIfCkzyC
+imJukhYy6KoqNMKQEdpNiSOvWyDMTMt1bwCvEzpw91u+msUt4rj0efnO9s0ZOwdw
+MRDnH4xgUl5ZLwrrPkfC1/0CAwEAAaNmMGQwHQYDVR0OBBYEFNLu71oijTptXCOX
+PfKF1SbxJXuSMB8GA1UdIwQYMBaAFNLu71oijTptXCOXPfKF1SbxJXuSMBIGA1Ud
+EwEB/wQIMAYBAf8CAQMwDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBDQUAA4IB
+AQC3IW/sgB9pZ8apJNjxuGoX+FkILks0wMNrdXL/coUvsrhzsvl6mePMrbGJByJ1
+XnquB5sgcRENFxdQFma3mio8Upf1owM1ZreXrJ0mADG2BplqbJnxiyYa+R11reIF
+TWeIhMNcZKsDZrFAyPuFjCWSQvJmNWe9mFRYFgNhXJKkXIb5H1XgEDlwiedYRM7V
+olBNlld6pRFKlX8ust6OTMOeADl2xNF0m1LThSdeuXvDyC1g9+ILfz3S6OIYgc3i
+roRcFD354g7rKfu67qFAw9gC4yi0xBTPrY95rh4/HqaUYCA/L8ldRk6H7Xk35D+W
+Vpmq2Sh/xT5HiFuhf4wJb0bK
+-----END CERTIFICATE-----`
+
+var (
+	// serial number of the YubiKey, encoded as an integer.
+	// https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
+	oidYubicoSerialNumber = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 41482, 3, 7}
+
+	// custom Smallstep managed device extension carrying a device ID or serial number
+	oidStepManagedDevice = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 37476, 9000, 64, 4}
+)
 
 type stepAttestationData struct {
 	Certificate  *x509.Certificate
@@ -1403,12 +1432,17 @@ func doStepAttestationFormat(_ context.Context, prov Provisioner, ch *Challenge,
 	// Use configured or default attestation roots if none is configured.
 	roots, ok := prov.GetAttestationRoots()
 	if !ok {
-		root, err := pemutil.ParseCertificate([]byte(yubicoPIVRootCA))
+		pivRoot, err := pemutil.ParseCertificate([]byte(yubicoPIVRootCA))
+		if err != nil {
+			return nil, WrapErrorISE(err, "error parsing root ca")
+		}
+		attRoot, err := pemutil.ParseCertificate([]byte(yubicoAttestationRootCA))
 		if err != nil {
 			return nil, WrapErrorISE(err, "error parsing root ca")
 		}
 		roots = x509.NewCertPool()
-		roots.AddCert(root)
+		roots.AddCert(pivRoot)
+		roots.AddCert(attRoot)
 	}
 
 	// Extract x5c and verify certificate
@@ -1492,23 +1526,45 @@ func doStepAttestationFormat(_ context.Context, prov Provisioner, ch *Challenge,
 	data := &stepAttestationData{
 		Certificate: leaf,
 	}
+
 	if data.Fingerprint, err = keyutil.Fingerprint(leaf.PublicKey); err != nil {
 		return nil, WrapErrorISE(err, "error calculating key fingerprint")
 	}
-	for _, ext := range leaf.Extensions {
-		if !ext.Id.Equal(oidYubicoSerialNumber) {
-			continue
-		}
-		var serialNumber int
-		rest, err := asn1.Unmarshal(ext.Value, &serialNumber)
-		if err != nil || len(rest) > 0 {
-			return nil, WrapError(ErrorBadAttestationStatementType, err, "error parsing serial number")
-		}
-		data.SerialNumber = strconv.Itoa(serialNumber)
-		break
+
+	if data.SerialNumber, err = searchSerialNumber(leaf); err != nil {
+		return nil, WrapErrorISE(err, "error finding serial number")
 	}
 
 	return data, nil
+}
+
+// searchSerialNumber searches the certificate extensions, looking for a serial
+// number encoded in one of them. It is not guaranteed that a certificate contains
+// an extension carrying a serial number, so the result can be empty.
+func searchSerialNumber(cert *x509.Certificate) (string, error) {
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(oidYubicoSerialNumber) {
+			var serialNumber int
+			rest, err := asn1.Unmarshal(ext.Value, &serialNumber)
+			if err != nil || len(rest) > 0 {
+				return "", WrapError(ErrorBadAttestationStatementType, err, "error parsing serial number")
+			}
+			return strconv.Itoa(serialNumber), nil
+		}
+		if ext.Id.Equal(oidStepManagedDevice) {
+			type stepManagedDevice struct {
+				DeviceID string
+			}
+			var md stepManagedDevice
+			rest, err := asn1.Unmarshal(ext.Value, &md)
+			if err != nil || len(rest) > 0 {
+				return "", WrapError(ErrorBadAttestationStatementType, err, "error parsing serial number")
+			}
+			return md.DeviceID, nil
+		}
+	}
+
+	return "", nil
 }
 
 // serverName determines the SNI HostName to set based on an acme.Challenge

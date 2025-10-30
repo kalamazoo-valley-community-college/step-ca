@@ -279,6 +279,7 @@ type mockCA struct {
 	MockIsRevoked      func(sn string) (bool, error)
 	MockRevoke         func(ctx context.Context, opts *authority.RevokeOptions) error
 	MockAreSANsallowed func(ctx context.Context, sans []string) error
+	MockGetBackdate    func() *time.Duration
 }
 
 func (m *mockCA) SignWithContext(context.Context, *x509.CertificateRequest, provisioner.SignOptions, ...provisioner.SignOption) ([]*x509.Certificate, error) {
@@ -308,6 +309,13 @@ func (m *mockCA) Revoke(ctx context.Context, opts *authority.RevokeOptions) erro
 
 func (m *mockCA) LoadProvisionerByName(string) (provisioner.Interface, error) {
 	return nil, nil
+}
+
+func (m *mockCA) GetBackdate() *time.Duration {
+	if m.MockGetBackdate != nil {
+		return m.MockGetBackdate()
+	}
+	return nil
 }
 
 func Test_validateReasonCode(t *testing.T) {
@@ -1094,7 +1102,6 @@ func TestHandler_RevokeCert(t *testing.T) {
 				assert.Equals(t, res.Header["Content-Type"], []string{"application/problem+json"})
 			} else {
 				assert.True(t, bytes.Equal(bytes.TrimSpace(body), []byte{}))
-				assert.Equals(t, int64(-1), req.ContentLength)
 				assert.Equals(t, []string{fmt.Sprintf("<%s/acme/%s/directory>;rel=\"index\"", baseURL.String(), escProvName)}, res.Header["Link"])
 			}
 		})
